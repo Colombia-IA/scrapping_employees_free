@@ -12,8 +12,7 @@ Sitios soportados:
 import re
 import time
 import random
-from typing import Optional
-from datetime import datetime
+from urllib.parse import quote_plus
 
 import httpx
 from bs4 import BeautifulSoup
@@ -74,20 +73,37 @@ def buscar_tecoloco(
         print(f"  Tecoloco: Pais '{pais}' no soportado")
         return []
 
-    # Construir URL de busqueda
-    cargo_url = cargo.lower().replace(" ", "-")
-    url = f"https://{dominio}/empleos?q={cargo_url}"
-
-    if ciudad:
-        url += f"&ubicacion={ciudad.lower()}"
+    # Construir URL de busqueda con encoding correcto
+    cargo_encoded = quote_plus(cargo)
+    url = f"https://{dominio}/empleos?q={cargo_encoded}&PerPage=40"
 
     print(f"  Tecoloco ({pais}): Buscando '{cargo}'...")
 
     empleos = []
+    cargo_lower = cargo.lower()
+
+    # Sinonimos comunes para mejorar busqueda
+    sinonimos = {
+        "marketing": ["marketing", "mercadeo", "marca", "publicidad", "brand", "digital"],
+        "ventas": ["ventas", "vendedor", "comercial", "asesor comercial", "ejecutivo de ventas"],
+        "contabilidad": ["contabilidad", "contable", "contador", "contadora", "finanzas"],
+        "administracion": ["administracion", "administrativo", "administrativa", "admin"],
+        "sistemas": ["sistemas", "ti", "it", "tecnologia", "developer", "programador"],
+        "recursos humanos": ["recursos humanos", "rrhh", "talento", "seleccion"],
+    }
+
+    # Palabras clave para filtrar resultados relevantes
+    palabras_cargo = set(cargo_lower.split())
+
+    # Agregar sinonimos si aplica
+    for key, values in sinonimos.items():
+        if key in cargo_lower or any(v in cargo_lower for v in values):
+            palabras_cargo.update(values)
+            break
 
     try:
         # Delay aleatorio para evitar bloqueos
-        time.sleep(random.uniform(1, 3))
+        time.sleep(random.uniform(1, 2))
 
         with httpx.Client(timeout=30, follow_redirects=True) as client:
             response = client.get(url, headers=get_random_headers())
@@ -95,56 +111,109 @@ def buscar_tecoloco(
 
             soup = BeautifulSoup(response.text, "html.parser")
 
-            # Buscar contenedores de ofertas
-            # Tecoloco usa diferentes estructuras, intentamos varias
-            ofertas = soup.find_all("a", href=re.compile(r"/\d+/.*\.aspx"))
+            # Buscar todos los contenedores de ofertas
+            # Tecoloco usa divs con clase que contiene "job" o "result"
+            job_containers = soup.find_all("div", class_=re.compile(r"job|result|offer|card", re.I))
+
+            # Si no encuentra con clases, buscar por estructura de enlaces
+            if not job_containers:
+                job_containers = soup.find_all("a", href=re.compile(r"/\d+/[^/]+\.aspx"))
 
             seen_links = set()
 
-            for oferta in ofertas[:cantidad * 2]:  # Obtener mas para filtrar
+            for container in job_containers:
                 try:
-                    href = oferta.get("href", "")
+                    # Buscar el enlace de la oferta
+                    if container.name == "a":
+                        link_elem = container
+                    else:
+                        link_elem = container.find("a", href=re.compile(r"/\d+/[^/]+\.aspx"))
 
-                    # Evitar duplicados
-                    if href in seen_links or not href:
+                    if not link_elem:
                         continue
-                    seen_links.add(href)
+
+                    href = link_elem.get("href", "")
+                    if not href or href in seen_links:
+                        continue
 
                     # Construir link completo
-                    link = f"https://{dominio}{href}" if href.startswith("/") else href
+                    if href.startswith("/"):
+                        link = f"https://{dominio}{href}"
+                    else:
+                        link = href
+
+                    seen_links.add(href)
 
                     # Extraer titulo
-                    titulo = oferta.get_text(strip=True)
+                    titulo = link_elem.get_text(strip=True)
+                    if not titulo or len(titulo) < 3:
+                        # Intentar buscar h2, h3, h4 dentro del contenedor
+                        titulo_elem = container.find(["h2", "h3", "h4", "strong"])
+                        if titulo_elem:
+                            titulo = titulo_elem.get_text(strip=True)
+
                     if not titulo or len(titulo) < 3:
                         continue
 
-                    # Limpiar titulo (remover texto extra)
-                    titulo = re.sub(r"\s+", " ", titulo)
+                    # Limpiar titulo
+                    titulo = re.sub(r"\s+", " ", titulo).strip()
 
-                    # Buscar empresa y ubicacion en elementos cercanos
-                    parent = oferta.find_parent(["div", "li", "article"])
+                    # Filtrar: verificar si el titulo tiene relacion con el cargo buscado
+                    titulo_lower = titulo.lower()
+                    es_relevante = False
+
+                    # Verificar si alguna palabra del cargo esta en el titulo
+                    for palabra in palabras_cargo:
+                        if len(palabra) >= 3 and palabra in titulo_lower:
+                            es_relevante = True
+                            break
+
+                    # Si no es relevante por titulo, verificar en el contexto
+                    if not es_relevante:
+                        texto_contexto = container.get_text(" ", strip=True).lower()
+                        for palabra in palabras_cargo:
+                            if len(palabra) >= 3 and palabra in texto_contexto:
+                                es_relevante = True
+                                break
+
+                    # Si no es relevante, no incluir
+                    if not es_relevante:
+                        continue
+
+                    # Buscar empresa
                     empresa = "No especificada"
-                    ubicacion = ciudad if ciudad else pais
+                    empresa_elem = container.find(class_=re.compile(r"company|empresa|employer", re.I))
+                    if empresa_elem:
+                        empresa = empresa_elem.get_text(strip=True)
+                    else:
+                        # Buscar en spans o divs secundarios
+                        for elem in container.find_all(["span", "div", "p"]):
+                            texto = elem.get_text(strip=True)
+                            # Si parece nombre de empresa (no es fecha, no es ubicacion)
+                            if texto and len(texto) > 2 and len(texto) < 50:
+                                if not re.search(r"expira|fecha|managua|guatemala|honduras|nicaragua|ver oferta", texto.lower()):
+                                    empresa = texto
+                                    break
 
-                    if parent:
-                        # Buscar texto que parezca empresa
-                        texto_parent = parent.get_text(" ", strip=True)
-                        # Buscar ubicacion
-                        ubicacion_match = re.search(
-                            r"(Managua|Guatemala|San Salvador|Tegucigalpa|San José|"
-                            r"León|Matagalpa|Chinandega|Masaya|Granada|Estelí|Jinotega|"
-                            r"Chontales|Rivas|Carazo|Boaco|Madriz|Nueva Segovia|"
-                            r"Río San Juan|RAAN|RAAS|Nicaragua|Guatemala|Honduras|"
-                            r"El Salvador|Costa Rica)",
-                            texto_parent,
-                            re.IGNORECASE
-                        )
-                        if ubicacion_match:
-                            ubicacion = ubicacion_match.group(0)
+                    # Buscar ubicacion
+                    ubicacion = ciudad if ciudad else ""
+                    ubicacion_match = re.search(
+                        r"(Managua|Guatemala City|Guatemala|San Salvador|Tegucigalpa|San José|"
+                        r"León|Matagalpa|Chinandega|Masaya|Granada|Estelí|Jinotega|"
+                        r"Chontales|Rivas|Carazo|Boaco|Madriz|Nueva Segovia|"
+                        r"Quetzaltenango|Escuintla|Santa Ana|San Miguel)",
+                        container.get_text(" ", strip=True),
+                        re.IGNORECASE
+                    )
+                    if ubicacion_match:
+                        ubicacion = ubicacion_match.group(0)
+
+                    if not ubicacion:
+                        ubicacion = pais.title()
 
                     empleo = {
                         "titulo": titulo[:100],
-                        "empresa": empresa,
+                        "empresa": empresa[:50] if empresa else "No especificada",
                         "ubicacion": f"{ubicacion}, {pais.title()}",
                         "link": link,
                         "fuente": "Tecoloco",
@@ -156,7 +225,7 @@ def buscar_tecoloco(
                     if len(empleos) >= cantidad:
                         break
 
-                except Exception as e:
+                except Exception:
                     continue
 
         print(f"  Tecoloco: {len(empleos)} ofertas encontradas")
@@ -180,9 +249,10 @@ if __name__ == "__main__":
     # Test
     print("=== Test Tecoloco ===\n")
 
-    empleos = buscar_tecoloco("marketing", "nicaragua", cantidad=5)
+    empleos = buscar_tecoloco("marketing", "nicaragua", cantidad=10)
 
     for i, emp in enumerate(empleos, 1):
         print(f"\n{i}. {emp['titulo']}")
+        print(f"   Empresa: {emp['empresa']}")
         print(f"   Ubicacion: {emp['ubicacion']}")
         print(f"   Link: {emp['link']}")
