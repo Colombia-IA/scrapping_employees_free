@@ -1,0 +1,4 @@
+# MVP Buscador de Empleos
+# Solo necesitas esta dependencia
+
+python-jobspy==1.1.75
