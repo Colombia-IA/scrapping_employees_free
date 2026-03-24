@@ -24,3 +24,9 @@ tmpclaude-*
 # OS
 .DS_Store
 Thumbs.db
+
+# Data (historial local)
+data/
+
+# Claude Code
+.claude/

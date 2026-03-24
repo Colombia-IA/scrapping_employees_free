@@ -1,29 +1,21 @@
-# Scraping Employees Free - MVP
+# Scraping Employees Free
 
-Buscador de ofertas de empleo gratuito usando scraping de sitios web.
+Buscador de ofertas de empleo gratuito para ayudar a personas que buscan trabajo.
 
 ## Repositorio
 https://github.com/Colombia-IA/scrapping_employees_free.git
 
-## Descripcion
+## Proposito
 
-Script simple que busca ofertas de empleo en multiples sitios (LinkedIn, Indeed, Glassdoor) usando la libreria JobSpy. Permite parametrizar la busqueda por cargo y ubicacion.
+Cuando ves a alguien en LinkedIn publicando su hoja de vida porque no tiene trabajo, puedes usar este script para buscarle ofertas de empleo relevantes y compartirle la informacion.
 
 ## Como funciona
 
-1. El usuario ejecuta el script con parametros de cargo y ubicacion
-2. JobSpy hace scraping de LinkedIn, Indeed y Glassdoor simultaneamente
-3. Se filtran y procesan los resultados
-4. Se muestran las ofertas encontradas en consola
-
-## Arquitectura
-
-```
-scraping_employee_free/
-├── buscar_empleo.py    # Script principal
-├── requirements.txt    # Dependencias (solo python-jobspy)
-└── CLAUDE.md          # Esta documentacion
-```
+1. Ves un post de alguien buscando trabajo
+2. Ejecutas el script con el cargo y pais que busca esa persona
+3. El script busca en LinkedIn, Indeed y Glassdoor
+4. Te muestra las ofertas encontradas
+5. Guarda un historial de las busquedas en JSON
 
 ## Uso
 
@@ -32,32 +24,77 @@ scraping_employee_free/
 pip install -r requirements.txt
 
 # Buscar empleos
-python buscar_empleo.py --cargo "python developer" --ubicacion "Colombia"
-python buscar_empleo.py -c "data analyst" -u "Mexico"
-python buscar_empleo.py -c "react junior" -u "Remote" -n 30
+python buscar_empleo.py -c "marketing" -ci "Bogota" -p "Colombia"
+python buscar_empleo.py -c "desarrollador web" -p "Mexico"
+python buscar_empleo.py -c "publicidad" -p "worldwide"
+
+# Ver paises soportados
+python buscar_empleo.py --paises
+
+# Buscar sin guardar en historial
+python buscar_empleo.py -c "ventas" -p "Peru" --no-guardar
 ```
 
 ## Parametros
 
-| Parametro | Corto | Descripcion | Ejemplo |
-|-----------|-------|-------------|---------|
-| `--cargo` | `-c` | Cargo o puesto a buscar | "python developer" |
-| `--ubicacion` | `-u` | Ciudad, pais o "Remote" | "Colombia", "Remote" |
-| `--cantidad` | `-n` | Numero de resultados (default: 20) | 10, 30 |
+| Parametro | Corto | Requerido | Descripcion |
+|-----------|-------|-----------|-------------|
+| `--cargo` | `-c` | Si | Cargo o puesto a buscar |
+| `--pais` | `-p` | Si | Pais o "worldwide" para remoto |
+| `--ciudad` | `-ci` | No | Ciudad especifica |
+| `--cantidad` | `-n` | No | Numero de resultados (default: 20) |
+| `--no-guardar` | - | No | No guardar en historial |
+| `--paises` | - | No | Ver lista de paises soportados |
 
-## Sitios soportados
+## Paises soportados
 
-- **LinkedIn** - Funciona globalmente
-- **Indeed** - Funciona globalmente
-- **Glassdoor** - Solo USA (se omite automaticamente para otros paises)
+### Latinoamerica
+argentina, brazil, chile, colombia, costa rica, ecuador, mexico, panama, peru, uruguay, venezuela
+
+### Opciones globales
+worldwide, remote, usa, uk, canada, spain
+
+### NO soportados
+Nicaragua, Guatemala, Honduras, El Salvador - usar `worldwide` para estos paises
+
+## Estructura
+
+```
+scraping_employee_free/
+├── buscar_empleo.py           # Script principal
+├── requirements.txt           # Dependencias
+├── CLAUDE.md                  # Esta documentacion
+├── .gitignore
+└── data/
+    └── historial_busquedas.json   # Historial de busquedas
+```
+
+## Historial
+
+El historial guarda cada busqueda con:
+- Fecha
+- Cargo, ciudad, pais
+- Lista de ofertas encontradas (titulo, empresa, link, fuente)
+
+Archivo: `data/historial_busquedas.json`
+
+Se mantienen las ultimas 100 busquedas automaticamente.
+
+## Sitios de empleo
+
+| Sitio | Cobertura |
+|-------|-----------|
+| LinkedIn | Global |
+| Indeed | Global |
+| Glassdoor | Solo USA |
 
 ## Dependencias
 
 - `python-jobspy` - Libreria de scraping de empleos (gratuita)
 - Python 3.10+
 
-## Notas tecnicas
+## Limitaciones
 
-- JobSpy maneja internamente los headers y delays para evitar bloqueos
-- Los resultados se limitan a ofertas de los ultimos 7 dias
-- El encoding se maneja automaticamente para Windows (caracteres especiales)
+- LinkedIn tiene medidas anti-scraping, puede fallar ocasionalmente
+- Glassdoor solo funciona para USA
+- Algunos paises de Centroamerica no estan soportados
