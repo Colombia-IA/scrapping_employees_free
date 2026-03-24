@@ -9,23 +9,23 @@ https://github.com/Colombia-IA/scrapping_employees_free.git
 
 Cuando ves a alguien en LinkedIn publicando su hoja de vida porque no tiene trabajo, puedes usar este script para buscarle ofertas de empleo relevantes y compartirle la informacion.
 
-## Como funciona
+## Plataformas soportadas
 
-1. Ves un post de alguien buscando trabajo
-2. Ejecutas el script con el cargo y pais que busca esa persona
-3. El script busca en LinkedIn, Indeed y Glassdoor
-4. Te muestra las ofertas encontradas
-5. Guarda un historial de las busquedas en JSON
+| Plataforma | Sitios | Cobertura |
+|------------|--------|-----------|
+| **JobSpy** | LinkedIn, Indeed, Glassdoor, Google Jobs, ZipRecruiter | Global (40+ paises) |
+| **Tecoloco** | tecoloco.com.ni/gt/sv/hn | Centroamerica |
 
 ## Uso
 
 ```bash
-# Instalar dependencia
+# Instalar dependencias
 pip install -r requirements.txt
 
 # Buscar empleos
 python buscar_empleo.py -c "marketing" -ci "Bogota" -p "Colombia"
-python buscar_empleo.py -c "desarrollador web" -p "Mexico"
+python buscar_empleo.py -c "ventas" -ci "Managua" -p "Nicaragua"
+python buscar_empleo.py -c "developer" -p "usa"
 python buscar_empleo.py -c "publicidad" -p "worldwide"
 
 # Ver paises soportados
@@ -40,7 +40,7 @@ python buscar_empleo.py -c "ventas" -p "Peru" --no-guardar
 | Parametro | Corto | Requerido | Descripcion |
 |-----------|-------|-----------|-------------|
 | `--cargo` | `-c` | Si | Cargo o puesto a buscar |
-| `--pais` | `-p` | Si | Pais o "worldwide" para remoto |
+| `--pais` | `-p` | Si | Pais (ver lista abajo) |
 | `--ciudad` | `-ci` | No | Ciudad especifica |
 | `--cantidad` | `-n` | No | Numero de resultados (default: 20) |
 | `--no-guardar` | - | No | No guardar en historial |
@@ -48,14 +48,16 @@ python buscar_empleo.py -c "ventas" -p "Peru" --no-guardar
 
 ## Paises soportados
 
-### Latinoamerica
-argentina, brazil, chile, colombia, costa rica, ecuador, mexico, panama, peru, uruguay, venezuela
+### JobSpy (LinkedIn, Indeed, Glassdoor, Google Jobs)
+**Latinoamerica:** argentina, brazil, chile, colombia, costa rica, ecuador, mexico, panama, peru, uruguay, venezuela
 
-### Opciones globales
-worldwide, remote, usa, uk, canada, spain
+**Global:** usa, uk, canada, spain, worldwide, remote
 
-### NO soportados
-Nicaragua, Guatemala, Honduras, El Salvador - usar `worldwide` para estos paises
+### Tecoloco (Centroamerica)
+nicaragua, guatemala, el salvador, honduras, costa rica
+
+### ZipRecruiter
+Solo USA
 
 ## Estructura
 
@@ -65,8 +67,11 @@ scraping_employee_free/
 ├── requirements.txt           # Dependencias
 ├── CLAUDE.md                  # Esta documentacion
 ├── .gitignore
+├── scrapers/                  # Scrapers adicionales
+│   ├── __init__.py
+│   └── tecoloco.py           # Scraper Centroamerica
 └── data/
-    └── historial_busquedas.json   # Historial de busquedas
+    └── historial_busquedas.json   # Historial (local, no se sube)
 ```
 
 ## Historial
@@ -80,21 +85,26 @@ Archivo: `data/historial_busquedas.json`
 
 Se mantienen las ultimas 100 busquedas automaticamente.
 
-## Sitios de empleo
-
-| Sitio | Cobertura |
-|-------|-----------|
-| LinkedIn | Global |
-| Indeed | Global |
-| Glassdoor | Solo USA |
-
 ## Dependencias
 
-- `python-jobspy` - Libreria de scraping de empleos (gratuita)
+- `python-jobspy` - Scraping de LinkedIn, Indeed, Glassdoor, Google, ZipRecruiter
+- `httpx` - HTTP client para scrapers adicionales
+- `beautifulsoup4` - Parser HTML
+- `lxml` - Parser XML/HTML rapido
 - Python 3.10+
+
+## Agregar nuevos scrapers
+
+Para agregar soporte a nuevos sitios de empleo:
+
+1. Crear archivo en `scrapers/nuevo_sitio.py`
+2. Implementar funcion `buscar_nuevo_sitio(cargo, pais, ciudad, cantidad)`
+3. Importar en `scrapers/__init__.py`
+4. Integrar en `buscar_empleo.py`
 
 ## Limitaciones
 
-- LinkedIn tiene medidas anti-scraping, puede fallar ocasionalmente
+- LinkedIn tiene rate limiting agresivo
 - Glassdoor solo funciona para USA
-- Algunos paises de Centroamerica no estan soportados
+- Algunos sitios bloquean requests directos (requieren browser)
+- Tecoloco no extrae nombre de empresa (limitacion de la pagina)

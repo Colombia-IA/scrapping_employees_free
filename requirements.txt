@@ -1,4 +1,9 @@
-# MVP Buscador de Empleos
-# Solo necesitas esta dependencia
+# Buscador de Empleos - Dependencias
 
+# JobSpy - Scraping de LinkedIn, Indeed, Glassdoor, Google Jobs, ZipRecruiter
 python-jobspy==1.1.75
+
+# HTTP Client y HTML Parser (para scrapers adicionales)
+httpx==0.27.0
+beautifulsoup4==4.12.3
+lxml==5.1.0

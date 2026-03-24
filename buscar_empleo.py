@@ -2,12 +2,13 @@
 """
 Buscador de Empleos - Ayuda a personas a encontrar trabajo
 
-Busca ofertas de trabajo en LinkedIn, Indeed y Glassdoor.
-Guarda historial de busquedas para seguimiento.
+Busca ofertas de trabajo en multiples plataformas:
+- JobSpy: LinkedIn, Indeed, Glassdoor, Google Jobs, ZipRecruiter
+- Tecoloco: Nicaragua, Guatemala, El Salvador, Honduras, Costa Rica
 
 Uso:
     python buscar_empleo.py --cargo "marketing" --ciudad "Bogota" --pais "Colombia"
-    python buscar_empleo.py -c "desarrollador" -ci "Managua" -p "worldwide"
+    python buscar_empleo.py -c "ventas" -ci "Managua" -p "Nicaragua"
 """
 
 import argparse
@@ -28,7 +29,7 @@ DATA_DIR.mkdir(exist_ok=True)
 HISTORIAL_FILE = DATA_DIR / "historial_busquedas.json"
 
 # Paises soportados por JobSpy/Indeed
-PAISES_SOPORTADOS = [
+PAISES_JOBSPY = [
     "argentina", "australia", "austria", "bahrain", "belgium", "brazil",
     "canada", "chile", "china", "colombia", "costa rica", "czech republic",
     "denmark", "ecuador", "egypt", "finland", "france", "germany", "greece",
@@ -41,6 +42,9 @@ PAISES_SOPORTADOS = [
     "united arab emirates", "uk", "united kingdom", "usa", "united states",
     "uruguay", "venezuela", "vietnam", "worldwide", "remote"
 ]
+
+# Paises soportados por Tecoloco (Centroamerica)
+PAISES_TECOLOCO = ["nicaragua", "guatemala", "el salvador", "honduras", "costa rica"]
 
 # Paises donde Glassdoor NO funciona
 PAISES_SIN_GLASSDOOR = [
@@ -108,67 +112,21 @@ def guardar_busqueda(cargo: str, ciudad: str, pais: str, empleos: list[dict]) ->
     print(f"\n[Guardado en historial: {HISTORIAL_FILE}]")
 
 
-def verificar_pais(pais: str) -> tuple[bool, str]:
+def buscar_en_jobspy(cargo: str, ubicacion: str, pais: str, cantidad: int) -> list[dict]:
     """
-    Verifica si el pais esta soportado y sugiere alternativas.
-
-    Returns:
-        (soportado, mensaje)
+    Busca empleos usando JobSpy (LinkedIn, Indeed, Glassdoor, Google, ZipRecruiter).
     """
-    pais_lower = pais.lower().strip()
-
-    if pais_lower in PAISES_SOPORTADOS:
-        return True, ""
-
-    # Buscar paises similares
-    sugerencias = [p for p in PAISES_SOPORTADOS if pais_lower[:3] in p]
-
-    msg = f"'{pais}' no esta soportado por los sitios de empleo.\n"
-    msg += "Paises de LATAM soportados: argentina, brazil, chile, colombia, costa rica, ecuador, mexico, panama, peru, uruguay, venezuela\n"
-    msg += "Tip: Usa 'worldwide' o 'remote' para buscar empleos remotos globales."
-
-    if sugerencias:
-        msg += f"\nSugerencias: {', '.join(sugerencias[:5])}"
-
-    return False, msg
-
-
-def buscar_empleos(cargo: str, ciudad: str, pais: str, cantidad: int = 20) -> list[dict]:
-    """
-    Busca empleos usando JobSpy (gratuito).
-
-    Args:
-        cargo: El cargo o puesto a buscar
-        ciudad: Ciudad especifica (puede ser vacio)
-        pais: Pais o "worldwide"/"remote"
-        cantidad: Numero maximo de resultados
-
-    Returns:
-        Lista de ofertas de empleo encontradas
-    """
-    # Construir ubicacion
-    if ciudad and ciudad.lower() != pais.lower():
-        ubicacion = f"{ciudad}, {pais}"
-    else:
-        ubicacion = pais
-
-    print(f"\nBuscando: '{cargo}' en '{ubicacion}'...")
-    print("-" * 50)
-
     empleos = []
     pais_lower = pais.lower().strip()
 
-    # Verificar pais soportado
-    soportado, mensaje = verificar_pais(pais)
-    if not soportado:
-        print(f"\nADVERTENCIA: {mensaje}")
-        print("\nIntentando busqueda de todas formas...\n")
-
     # Determinar sitios segun pais
-    if pais_lower in PAISES_SIN_GLASSDOOR:
-        sitios = ["indeed", "linkedin"]
+    if pais_lower in ["usa", "united states", "remote", "worldwide"]:
+        # USA: todos los sitios incluyendo ZipRecruiter y Google
+        sitios = ["indeed", "linkedin", "glassdoor", "google", "zip_recruiter"]
+    elif pais_lower in PAISES_SIN_GLASSDOOR:
+        sitios = ["indeed", "linkedin", "google"]
     else:
-        sitios = ["indeed", "linkedin", "glassdoor"]
+        sitios = ["indeed", "linkedin", "glassdoor", "google"]
 
     # Determinar country_indeed
     pais_indeed_map = {
@@ -186,6 +144,8 @@ def buscar_empleos(cargo: str, ciudad: str, pais: str, cantidad: int = 20) -> li
     }
     country_indeed = pais_indeed_map.get(pais_lower, "USA")
 
+    print(f"  JobSpy ({', '.join(sitios)}): Buscando...")
+
     try:
         df = scrape_jobs(
             site_name=sitios,
@@ -197,10 +157,10 @@ def buscar_empleos(cargo: str, ciudad: str, pais: str, cantidad: int = 20) -> li
         )
 
         if df is None or df.empty:
-            print("No se encontraron ofertas en los sitios consultados.")
+            print(f"  JobSpy: No se encontraron ofertas")
             return empleos
 
-        print(f"Encontradas {len(df)} ofertas en {', '.join(sitios)}\n")
+        print(f"  JobSpy: {len(df)} ofertas encontradas")
 
         for _, row in df.iterrows():
             titulo = str(row.get('title', ''))
@@ -214,7 +174,7 @@ def buscar_empleos(cargo: str, ciudad: str, pais: str, cantidad: int = 20) -> li
                 'empresa': empresa if empresa != 'nan' else 'No especificada',
                 'ubicacion': str(row.get('location', ubicacion)) if str(row.get('location', '')) != 'nan' else ubicacion,
                 'link': str(row.get('job_url', '')) if str(row.get('job_url', '')) != 'nan' else '',
-                'fuente': str(row.get('site', 'Desconocido')).capitalize(),
+                'fuente': str(row.get('site', 'JobSpy')).capitalize(),
                 'descripcion': str(row.get('description', ''))[:300] if str(row.get('description', '')) != 'nan' else '',
             }
             empleos.append(empleo)
@@ -222,12 +182,85 @@ def buscar_empleos(cargo: str, ciudad: str, pais: str, cantidad: int = 20) -> li
     except Exception as e:
         error_msg = str(e)
         if "Invalid country" in error_msg:
-            print(f"Error: El pais '{pais}' no esta soportado.")
-            print("Usa 'worldwide' para buscar empleos remotos globales.")
+            print(f"  JobSpy: Pais '{pais}' no soportado")
         else:
-            print(f"Error durante la busqueda: {e}")
+            print(f"  JobSpy: Error - {e}")
 
     return empleos
+
+
+def buscar_en_tecoloco(cargo: str, ciudad: str, pais: str, cantidad: int) -> list[dict]:
+    """
+    Busca empleos en Tecoloco (Centroamerica).
+    """
+    try:
+        from scrapers.tecoloco import buscar_tecoloco
+        return buscar_tecoloco(cargo, pais, ciudad, cantidad)
+    except ImportError:
+        print("  Tecoloco: Modulo no disponible")
+        return []
+    except Exception as e:
+        print(f"  Tecoloco: Error - {e}")
+        return []
+
+
+def buscar_empleos(cargo: str, ciudad: str, pais: str, cantidad: int = 20) -> list[dict]:
+    """
+    Busca empleos en todas las plataformas disponibles.
+
+    Args:
+        cargo: El cargo o puesto a buscar
+        ciudad: Ciudad especifica (puede ser vacio)
+        pais: Pais
+        cantidad: Numero maximo de resultados
+
+    Returns:
+        Lista de ofertas de empleo encontradas
+    """
+    # Construir ubicacion
+    if ciudad and ciudad.lower() != pais.lower():
+        ubicacion = f"{ciudad}, {pais}"
+    else:
+        ubicacion = pais
+
+    print(f"\nBuscando: '{cargo}' en '{ubicacion}'...")
+    print("-" * 50)
+
+    empleos = []
+    pais_lower = pais.lower().strip()
+
+    # Determinar que plataformas usar
+    usar_jobspy = pais_lower in PAISES_JOBSPY
+    usar_tecoloco = pais_lower in PAISES_TECOLOCO
+
+    # Si el pais no esta en ninguna lista, intentar con JobSpy de todas formas
+    if not usar_jobspy and not usar_tecoloco:
+        print(f"\nADVERTENCIA: '{pais}' no esta en la lista de paises soportados.")
+        print("Intentando con JobSpy de todas formas...\n")
+        usar_jobspy = True
+
+    # Buscar en JobSpy
+    if usar_jobspy:
+        empleos_jobspy = buscar_en_jobspy(cargo, ubicacion, pais, cantidad)
+        empleos.extend(empleos_jobspy)
+
+    # Buscar en Tecoloco (Centroamerica)
+    if usar_tecoloco:
+        empleos_tecoloco = buscar_en_tecoloco(cargo, ciudad, pais, cantidad)
+        empleos.extend(empleos_tecoloco)
+
+    # Eliminar duplicados por link
+    seen_links = set()
+    empleos_unicos = []
+    for emp in empleos:
+        link = emp.get('link', '')
+        if link and link not in seen_links:
+            seen_links.add(link)
+            empleos_unicos.append(emp)
+        elif not link:
+            empleos_unicos.append(emp)
+
+    return empleos_unicos
 
 
 def mostrar_resultados(empleos: list[dict]) -> None:
@@ -236,7 +269,7 @@ def mostrar_resultados(empleos: list[dict]) -> None:
         print("\nNo hay resultados para mostrar.")
         return
 
-    print("=" * 60)
+    print("\n" + "=" * 60)
     print(f"RESULTADOS: {len(empleos)} ofertas encontradas")
     print("=" * 60)
 
@@ -258,20 +291,24 @@ def mostrar_resultados(empleos: list[dict]) -> None:
 
 def mostrar_paises_soportados():
     """Muestra lista de paises soportados."""
-    print("\nPAISES SOPORTADOS:")
-    print("-" * 40)
+    print("\n" + "=" * 50)
+    print("PAISES SOPORTADOS")
+    print("=" * 50)
 
-    latam = ["argentina", "brazil", "chile", "colombia", "costa rica",
-             "ecuador", "mexico", "panama", "peru", "uruguay", "venezuela"]
+    print("\n[JobSpy] LinkedIn, Indeed, Glassdoor, Google Jobs:")
+    latam_jobspy = ["argentina", "brazil", "chile", "colombia", "costa rica",
+                    "ecuador", "mexico", "panama", "peru", "uruguay", "venezuela"]
+    print("  Latinoamerica: " + ", ".join(latam_jobspy))
+    print("  Global: worldwide, remote, usa, uk, canada, spain")
 
-    print("\nLatinoamerica:")
-    print(", ".join(latam))
+    print("\n[Tecoloco] Centroamerica:")
+    print("  nicaragua, guatemala, el salvador, honduras, costa rica")
 
-    print("\nOpciones globales:")
-    print("worldwide, remote, usa, uk, canada, spain")
+    print("\n[ZipRecruiter] Solo USA:")
+    print("  usa, united states")
 
-    print("\nNOTA: Nicaragua, Guatemala, Honduras, El Salvador NO estan soportados.")
-    print("Para estos paises usa 'worldwide' o 'remote'.")
+    print("\n" + "-" * 50)
+    print("Tip: Para paises no listados, usa 'worldwide' para empleos remotos.")
 
 
 def main():
@@ -281,9 +318,14 @@ def main():
         epilog="""
 Ejemplos:
   python buscar_empleo.py -c "marketing" -ci "Bogota" -p "Colombia"
-  python buscar_empleo.py -c "desarrollador web" -p "Mexico"
+  python buscar_empleo.py -c "ventas" -ci "Managua" -p "Nicaragua"
+  python buscar_empleo.py -c "developer" -p "usa"
   python buscar_empleo.py -c "publicidad" -p "worldwide"
   python buscar_empleo.py --paises   # Ver paises soportados
+
+Plataformas:
+  - JobSpy: LinkedIn, Indeed, Glassdoor, Google Jobs, ZipRecruiter
+  - Tecoloco: Nicaragua, Guatemala, El Salvador, Honduras, Costa Rica
         """
     )
 
@@ -297,13 +339,13 @@ Ejemplos:
         '--ciudad', '-ci',
         type=str,
         default="",
-        help='Ciudad especifica (opcional, ej: "Bogota", "CDMX")'
+        help='Ciudad especifica (opcional, ej: "Bogota", "Managua")'
     )
 
     parser.add_argument(
         '--pais', '-p',
         type=str,
-        help='Pais o "worldwide" para remoto (ej: "Colombia", "worldwide")'
+        help='Pais (ej: "Colombia", "Nicaragua", "worldwide")'
     )
 
     parser.add_argument(
